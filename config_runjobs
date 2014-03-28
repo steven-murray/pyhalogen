@@ -1,0 +1,68 @@
+#===============================================================================
+# A CONFIG FILE FOR RUNJOBS.
+#===============================================================================
+
+# ------------------- PBS OPTIONS ------------------------
+[PBS]
+# The queue to send it to
+queue = debugq
+# The walltime in PBS format
+walltime = 00:10:00
+
+# ------------------- I/O OPTIONS ------------------------
+[IO]
+outdir_base = /scratch/partner712/savilaperez/FAST/Codes/GRID/pyfast_out
+# Where to put analysis files (appended to outdir_base)
+outdir_anl = analysis
+
+# ------------------- PRIMARY RUN OPTIONS ----------------
+[RunOptions]
+# Number of cells for sampling Mass Function
+tol = 3
+# Number of cells for placing down halos
+ncells = [1]
+# Minimum desired halo mass in units of particle mass
+min_halo_mass = [20]
+# Maximum desired halo mass in log10(M_sun)
+max_mfrac = [0.01]
+#Index of biasness
+alpha = [3.0]
+# Number of threads to use (I think 0 is all available)
+nthreads = 0
+
+# ------------------- RUN FLAGS --------------------------
+[RunFlags]
+# If True, writes out mass function as density rather than total number
+density = False
+# Do particle exclusion based on halo R200 radius
+exclusion = True
+# Do analysis of results
+analyse = True
+# Whether to make plots (only works if analyse is True)
+plot = True
+# Whether to do post-analysis on all files run
+post_analyse = True
+# Which placing algorithm to use (stat or rank)
+alg = ["stat"]
+
+# ------------------- ANALYSIS OPTIONS -------------------
+### These only matter if analyse is True ###
+[AnalyseOptions]
+# Number of bins in the mass function
+bins = 25
+# Maximum number of cells to check mass conservation
+nmax = 25
+# Path to MAKEFILE for CUTE
+makefile = /scratch/partner712/savilaperez/FAST/Codes/CUTE/Makefile
+# Number of r-bins in 2p-correlation
+nr = 20
+# Maximum r for 2p-correlation (0 makes it boxsize/2)
+rmax = 0
+# Number of r-bins per decade
+n_logint = 10
+# Number of halos to use for 2pcorr estimation
+numhalos = 1000
+# ------------------- MF OPTIONS -------------------------
+[MFOptions]
+mf_kwargs = {"mf_fit": "Tinker","delta_h":200,"delta_wrt":"crit","cut_fit":False}
+

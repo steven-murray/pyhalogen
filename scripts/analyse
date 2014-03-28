@@ -1,0 +1,248 @@
+#!/usr/local/bin/python2.7
+# encoding: utf-8
+'''
+scripts.analyse -- shortdesc
+
+scripts.analyse is a description
+
+It defines classes_and_methods
+'''
+
+import sys
+import os
+import traceback
+import errno
+
+import numpy as np
+from pyfast import analysis, fast
+from os.path import join
+
+from argparse import ArgumentParser
+from argparse import RawDescriptionHelpFormatter
+
+__all__ = []
+__version__ = 0.1
+__date__ = 2014 - 02 - 25
+__updated__ = 2014 - 02 - 25
+
+DEBUG = 0
+TESTRUN = 0
+PROFILE = 0
+
+class CLIError(Exception):
+    '''Generic exception to raise and log different fatal errors.'''
+    def __init__(self, msg):
+        super(CLIError).__init__(type(self))
+        self.msg = "E: %s" % msg
+    def __str__(self):
+        return self.msg
+    def __unicode__(self):
+        return self.msg
+
+def main(argv=None):
+    '''Process command line options.'''
+
+    if argv is None:
+        argv = sys.argv
+    else:
+        sys.argv.extend(argv)
+
+    program_name = os.path.basename(sys.argv[0])
+    program_version = "v%s" % __version__
+    program_build_date = str(__updated__)
+    program_version_message = '%%(prog)s %s (%s)' % (program_version, program_build_date)
+    program_shortdesc = __import__('__main__').__doc__.split("\n")[1]
+    program_license = '''%s
+
+  Created by user_name on %s.
+  Copyright 2014 organization_name. All rights reserved.
+
+  Licensed under the Apache License 2.0
+  http://www.apache.org/licenses/LICENSE-2.0
+
+  Distributed on an "AS IS" basis without warranties
+  or conditions of any kind, either express or implied.
+
+USAGE
+''' % (program_shortdesc, str(__date__))
+
+    try:
+        # Setup argument parser
+        parser = ArgumentParser(description=program_license,
+                                formatter_class=RawDescriptionHelpFormatter)
+        parser.add_argument("-v", "--verbose", dest="verbose", action="count",
+                            help="set verbosity level [default: %(default)s]")
+        parser.add_argument('-V', '--version', action='version',
+                            version=program_version_message)
+
+        parser.add_argument("folders", nargs="*",
+                            help="Directories containing output files from runfast")
+        parser.add_argument("simfile", help="file where the simulation is (nbody or 2lpt)")
+        parser.add_argument("outdir", help="folder to write results to")
+        parser.add_argument("makefile", help="Makefile for CUTE")
+
+        parser.add_argument("--nmax", default=100, type=int,
+                            help="maximum number of cells to test mass conservation")
+        parser.add_argument("--nr", type=int, default=24)
+        parser.add_argument("--rmax", type=float)
+        parser.add_argument("--n_logint", type=int, default=8)
+        parser.add_argument("--numhalos", type=int, default=1000)
+
+        # Process arguments
+        args = parser.parse_args()
+
+        #=======================================================================
+        #  Make the folder to which to write to.
+        #=======================================================================
+        try:
+            os.makedirs(args.outdir)
+        except OSError, e:
+            if e.errno != errno.EEXIST:
+                raise
+
+        sample = [0] * len(args.folders)
+        s2pc = [0] * len(args.folders)
+        true_spl = [0] * len(args.folders)
+        ratio = [0] * len(args.folders)
+        err = np.empty(len(args.folders))
+        corr_err = np.empty(len(args.folders))
+        mean = np.empty((len(args.folders), args.nmax))
+        std = np.empty((len(args.folders), args.nmax))
+        folders = []
+
+        dm_pos, header = fast._get_gadget(args.simfile)
+        simfolder = os.path.dirname(args.simfile)
+        nbodyfile = join(simfolder, "AHF_main_halos")
+
+        t2pcf = analysis.run_2pcorr(args.makefile, nbodyfile,
+                                    header['boxsize'], args.nr, args.rmax,
+                                    args.n_logint, args.numhalos, remake=True,
+                                    tmp_prefix=args.outdir)
+
+        for i, folder in enumerate(args.folders):
+            sample[i] = np.genfromtxt(join(folder, "mf_sample.dat"))
+            true_mf = np.genfromtxt(join(folder, "mf_true.dat"))
+            true_spl[i], err[i] = analysis.test_mf_true(sample[i], true_mf)
+
+
+            fname = os.path.split(folder)
+            if len(fname[1]) == 0:
+                folders.append(os.path.split(fname[0])[1])
+            else:
+                folders.append(fname[1])
+            true_n = int(folders[i].split("_")[1][1:])
+            halofile = join(folder, "halos")
+            halos = np.genfromtxt(halofile)
+
+            ratio[i], mean[i], std[i] = analysis.test_mass_cons(halos[:, :3], halos[:, 3], dm_pos,
+                                                                true_n, header['massarr'][1] * 1e10,
+                                                                header['boxsize'], args.nmax)
+
+            print "nbodyfile: ", nbodyfile
+            print "folder: ", folder
+            print "halofile: ", halofile
+            print "makefile: ", args.makefile
+            print "boxsize: ", header['boxsize']
+            # print "nbody_corr", t2pcf
+            print "outdir: ", args.outdir
+            s2pc[i], dummy, corr_err[i] = analysis.test_2pcorr(nbodyfile, halofile,
+                                                               args.makefile, header['boxsize'],
+                                                               args.nr, args.rmax, args.n_logint,
+                                                               args.numhalos, nbody_corr=t2pcf,
+                                                               remake=False,
+                                                               tmp_prefix=args.outdir)
+
+        print_results(err, mean, std, corr_err, folders)
+        plot_results(sample, true_spl, err, folders, s2pc, t2pcf, args.outdir)
+
+        return 0
+    except KeyboardInterrupt:
+        ### handle keyboard interrupt ###
+        return 0
+    except Exception, e:
+        if DEBUG or TESTRUN:
+            raise(e)
+        traceback.print_exc()
+        indent = len(program_name) * " "
+        sys.stderr.write(program_name + ": " + repr(e) + "\n")
+        sys.stderr.write(indent + "  for help use --help\n")
+        return 2
+
+
+def print_results(mf_err, mc_mean, mc_std, corr_err, folders):
+    from pandas import DataFrame
+
+    df = DataFrame(mf_err,
+                   columns=['MF rms'],
+                   index=folders)
+
+    print "===== RMS ERR IN MF ========="
+    df.sort("MF rms", inplace=True)
+
+    print df.to_string()
+
+    print "====== MEAN RATIO OF CELL MASS ======="
+
+    df = DataFrame(mc_mean.T,
+                   columns=folders,
+                   index=range(mc_mean.shape[1]))
+
+    print df.to_string()
+
+    print "====== STD OF RATIO OF CELL MASS ======="
+    df = DataFrame(mc_std.T,
+                   columns=folders,
+                   index=range(mc_std.shape[1]))
+    print df.to_string()
+
+    print "====== RMS ERR IN 2PCF ================="
+    df = DataFrame(corr_err,
+                   columns=['2PCF RMS'],
+                   index=folders)
+    df.sort("2PCF RMS", inplace=True)
+    print df.to_string()
+
+def plot_results(mf_sample, mf_true, mf_err, folders,
+                s2pc, t2pcf, outdir):
+    # Plot each sample as ratio of true.
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    for i, sample in enumerate(mf_sample):
+        plt.plot(sample[:, 0], sample[:, 1] / mf_true[i], label=folders[i].replace("_", "\_"))
+
+    plt.xlabel("Mass")
+    plt.xscale('log')
+    plt.ylabel("Ratio of Sampled MF to theoretical MF")
+    plt.yscale("log")
+    plt.legend()
+    plt.savefig(os.path.join(outdir, "mf.pdf"))
+
+    plt.clf()
+    plt.plot(t2pcf[:, 0], t2pcf[:, 1], label="NBODY")
+    for i, f in enumerate(folders):
+        plt.plot(s2pc[i][:, 0], s2pc[i][:, 1], label=f.replace("_", "\_"))
+    plt.xscale('log')
+    plt.yscale('log')
+    plt.legend()
+    plt.savefig(os.path.join(outdir, "2pcf.pdf"))
+
+if __name__ == "__main__":
+    if DEBUG:
+        sys.argv.append("-h")
+        sys.argv.append("-v")
+    if TESTRUN:
+        import doctest
+        doctest.testmod()
+    if PROFILE:
+        import cProfile
+        import pstats
+        profile_filename = 'scripts.analyse_profile.txt'
+        cProfile.run('main()', profile_filename)
+        statsfile = open("profile_stats.txt", "wb")
+        p = pstats.Stats(profile_filename, stream=statsfile)
+        stats = p.strip_dirs().sort_stats('cumulative')
+        stats.print_stats()
+        statsfile.close()
+        sys.exit(0)
+    sys.exit(main())

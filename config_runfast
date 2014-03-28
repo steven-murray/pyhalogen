@@ -1,0 +1,52 @@
+#===============================================================================
+# A CONFIG FILE FOR RUNFAST.
+#===============================================================================
+
+# ------------------- PRIMARY RUN OPTIONS ----------------
+[RunOptions]
+# tolerance with which total mass is sampled (units of lowest-mass halo)
+tol = 3
+# Number of cells for placing down halos
+ncells = 3
+# Minimum desired halo mass in units of particle mass
+min_halo_mass = 20
+# Maximum desired halo mass in log10(M_sun)
+max_mfrac = 0.01
+# Index of density bias
+alpha = 3.0
+
+# ------------------- RUN FLAGS --------------------------
+[RunFlags]
+# If True, writes out mass function as density rather than total number
+density = False
+# Do particle exclusion based on halo R200 radius
+exclusion = True
+# Do analysis of results
+analyse = True
+# Whether to make plots (only works if analyse is True)
+plot = True
+# Which placing algorithm to use (stat,rank)
+alg = stat
+
+# ------------------- ANALYSIS OPTIONS -------------------
+### These only matter if analyse is True ###
+[AnalyseOptions]
+# Number of bins in the mass function
+bins = 25
+# Maximum number of cells to check mass conservation
+nmax = 10
+# Path to MAKEFILE for CUTE
+makefile = /Users/Steven/Documents/PhD/CUTE/CUTE/Makefile
+# Number of r-bins in 2p-correlation
+nr = 20
+# Maximum r for 2p-correlation (0 makes it boxsize/2)
+rmax = 0
+# Number of r-bins per decade
+n_logint = 10
+# Number of halos to use for 2pcorr estimation
+numhalos = 1000
+
+# ------------------- MF OPTIONS -------------------------
+[MFOptions]
+mf_kwargs = {"mf_fit": "Tinker","delta_h":200,"delta_wrt":"crit"}
+

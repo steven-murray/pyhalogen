@@ -1,0 +1,378 @@
+#!/usr/local/bin/python2.7
+# encoding: utf-8
+'''
+scripts.runfast -- shortdesc
+
+scripts.runfast is a description
+
+It defines classes_and_methods
+'''
+
+import sys
+import os
+import traceback
+import errno
+import ast
+
+from os.path import join
+from pyfast.fast import fast
+from argparse import ArgumentParser
+from argparse import RawDescriptionHelpFormatter
+
+from ConfigParser import SafeConfigParser as cfg
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+import numpy as np
+
+import logging
+hmflog = logging.getLogger('hmf')
+hmflog.addHandler(logging.StreamHandler())
+
+__all__ = []
+__version__ = 0.1
+__date__ = 2014 - 02 - 19
+__updated__ = 2014 - 02 - 19
+
+DEBUG = 0
+TESTRUN = 0
+PROFILE = 0
+
+class CLIError(Exception):
+    '''Generic exception to raise and log different fatal errors.'''
+    def __init__(self, msg):
+        super(CLIError).__init__(type(self))
+        self.msg = "E: %s" % msg
+    def __str__(self):
+        return self.msg
+    def __unicode__(self):
+        return self.msg
+
+def main(argv=None):
+    '''Process command line options.'''
+
+    if argv is None:
+        argv = sys.argv
+    else:
+        sys.argv.extend(argv)
+
+    program_name = os.path.basename(sys.argv[0])
+    program_version = "v%s" % __version__
+    program_build_date = str(__updated__)
+    program_version_message = '%%(prog)s %s (%s)' % (program_version, program_build_date)
+    program_shortdesc = __import__('__main__').__doc__.split("\n")[1]
+    program_license = '''%s
+
+  Created by user_name on %s.
+  Copyright 2014 organization_name. All rights reserved.
+
+  Licensed under the Apache License 2.0
+  http://www.apache.org/licenses/LICENSE-2.0
+
+  Distributed on an "AS IS" basis without warranties
+  or conditions of any kind, either express or implied.
+
+USAGE
+''' % (program_shortdesc, str(__date__))
+
+    try:
+        #=======================================================================
+        # Setup argument parser
+        #=======================================================================
+        parser = ArgumentParser(description=program_license, formatter_class=RawDescriptionHelpFormatter)
+        parser.add_argument("-v", "--verbose", dest="verbose", action="count",
+                             help="set verbosity level [default: %(default)s]")
+        parser.add_argument('-V', '--version', action='version', version=program_version_message)
+
+        parser.add_argument("filename", help="Gadget snapshot to be populated")
+        parser.add_argument("outdir", help="Directory to which to write output files")
+        parser.add_argument("configfile", help="File containing configuration for run")
+
+        # Process arguments
+        args = parser.parse_args()
+
+
+        #=======================================================================
+        #  Make the folder to which to write to.
+        #=======================================================================
+        try:
+            os.makedirs(args.outdir)
+        except OSError, e:
+            if e.errno != errno.EEXIST:
+                raise
+
+        #=======================================================================
+        # Argument Validation
+        #=======================================================================
+        # Run the configuration file
+        config = cfg()
+        config.read(args.configfile)
+
+        ncells = config.getint("RunOptions", 'ncells')
+        min_halo_mass = config.getfloat("RunOptions", 'min_halo_mass')
+        max_mfrac = config.getfloat("RunOptions", 'max_mfrac')
+        tol = config.getint("RunOptions", 'tol')
+        alpha = config.getfloat("RunOptions", 'alpha')
+
+        density = config.getboolean("RunFlags", "density")
+        exclusion = config.getboolean("RunFlags", "exclusion")
+        analyse = config.getboolean("RunFlags", "analyse")
+        plot = config.getboolean("RunFlags", "plot")
+        alg = config.get("RunFlags", "alg")
+
+        bins = config.getint("AnalyseOptions", "bins")
+        nmax = config.getint("AnalyseOptions", 'nmax')
+        nr = config.getint("AnalyseOptions", "nr")
+        rmax = config.getfloat("AnalyseOptions", "rmax")
+        n_logint = config.getint("AnalyseOptions", "n_logint")
+        makefile = config.get("AnalyseOptions", "makefile")
+        numhalos = config.getint("AnalyseOptions", "numhalos")
+
+        mf_kwargs = ast.literal_eval(config.get("MFOptions", "mf_kwargs"))
+        #=======================================================================
+        # Run FAST
+        #=======================================================================
+        pos, mass, dmpos, hmf, header, frac_in_bounds, r = fast(args.filename,
+                                                                ncells, max_mfrac,
+                                                                min_halo_mass, tol,
+                                                                args.verbose, exclusion,
+                                                                alg, alpha,
+                                                                **mf_kwargs)
+
+        #=======================================================================
+        # Write out Basic Files
+        #=======================================================================
+        if args.verbose:
+            print "WRITING OUT BASE FILES..."
+        write_base_files(args.outdir, pos, mass, r)
+
+        #=======================================================================
+        # Post-Analysis
+        #=======================================================================
+        if analyse:
+            M = hmf.M
+            dndm = hmf.dndm
+            from pyfast import analysis
+            import pandas
+
+            simfolder = os.path.dirname(args.filename)
+            nbodyfile = join(simfolder, "AHF_main_halos")
+            nbody_halos = np.genfromtxt(join(simfolder, "AHF_main_halos"))
+
+            print "ANALYSING RESULTS..."
+            print "  CHECKING NO HALOS OVERLAP...",
+            halos_overlap = analysis.test_overlap(r, pos)
+            if not halos_overlap:
+                print "GOOD."
+            else:
+                print "%s OVERLAPPED" % halos_overlap
+
+
+            #------------------------  Mass Function  ------------------------
+            sample_mf = get_sample_mf(mass, bins)
+
+            if density:
+                sample_mf[:, 1] /= header['boxsize'] ** 3
+            else:
+                dndm *= header['boxsize'] ** 3
+
+            true_mf_spl, err = analysis.test_mf_true(sample_mf,
+                                                     np.vstack((M, M * dndm)).T)
+            print "  RMS ERR IN MF: ", err
+
+            nbody_mass = nbody_halos[:, 3]
+            nbody_mf = get_sample_mf(nbody_mass, bins)
+            if density:
+                nbody_mf[:, 1] /= header['boxsize'] ** 3
+
+            nbody_err = analysis.test_mf_nbody(sample_mf[:, 1],
+                                                nbody_mf[:, 1])
+            print "  RMS ERR IN MF TO NBODY: ", nbody_err
+
+            #----------------- Mass Conservation In Cells --------------------
+            ratio, mean, std = analysis.test_mass_cons(pos, mass, dmpos,
+                                                       ncells,
+                                                       header['massarr'][1] * 1e10,
+                                                       header['boxsize'],
+                                                       frac_in_bounds,
+                                                       nmax)
+
+            df = pandas.DataFrame(np.vstack((mean, std)).T,
+                                  columns=["Mean", "StDev"],
+                                  index=range(len(mean)))
+            print "  MEAN AND STDEV FOR RATIO OF MASS IN CELLS"
+            print df.to_string()
+
+            #---------------- 2-pt CORRELATION -------------------------------
+            s2pc, t2pc, corr_err = analysis.test_2pcorr(nbodyfile, os.path.join(args.outdir, "halos"),
+                                                        makefile, header['boxsize'],
+                                                        nr, rmax, n_logint, numhalos,
+                                                        tmp_prefix=args.outdir)
+            print "  RMS ERROR IN 2PCF: ", corr_err
+
+            print "  WRITING OUT ANALYSIS FILES..."
+            write_analysis_files(args.outdir, sample_mf,
+                                 np.vstack((M, M * dndm)).T, df, ratio,
+                                 s2pc, t2pc)
+
+            if plot:
+                print "  CREATING PLOTS..."
+                make_plots(args.outdir, pos, mass, r, dmpos, M, M * dndm, sample_mf,
+                           true_mf_spl, nbody_mf, s2pc, t2pc, nbody_halos)
+
+        return 0
+    except KeyboardInterrupt:
+        ### handle keyboard interrupt ###
+        return 0
+    except Exception, e:
+        if DEBUG or TESTRUN:
+            raise(e)
+        traceback.print_exc()
+        indent = len(program_name) * " "
+        sys.stderr.write(program_name + ": " + repr(e) + "\n")
+        sys.stderr.write(indent + "  for help use --help")
+        return 2
+
+#===============================================================================
+# FUNCTION CALLS
+#===============================================================================
+def write_base_files(outdir, pos, mass, r):
+    # -------- halo pos and mass array -----------
+    outarray = np.zeros((len(pos), 5))
+    outarray[:, :3] = pos
+    outarray[:, 3] = mass
+    outarray[:, 4] = r
+
+    with open(join(outdir, "halos"), "w") as f:
+        # f.write("# X\tY\tZ\tMass\n")
+        np.savetxt(f, outarray)
+
+#     # -------- mass function ---------------------
+#     outarray = np.zeros((len(M), 2))
+#     outarray[:, 0] = M
+#     outarray[:, 1] = dndm
+#
+#     with open(join(outdir, "mf_true.dat"), "w") as f:
+#         f.write("# M\tdndm_true\n")
+#         np.savetxt(f, outarray)
+#
+#     outarray = np.zeros((len(centres), 2))
+#     outarray[:, 0] = np.exp(centres)
+#     outarray[:, 1] = hist
+#     with open(join(outdir, "mf_sample.dat"), "w") as f:
+#         f.write("# M\tdndm_sample\n")
+#         np.savetxt(f, outarray)
+
+
+def get_sample_mf(mass, bins):
+    """ Calculate sampled MF"""
+    hist, edges = np.histogram(np.log(mass), bins=bins)
+    hist /= (edges[1] - edges[0])  # normalise by bin width
+    centres = (edges[1:] + edges[:-1]) / 2
+
+    return np.vstack((centres, hist)).T
+
+def write_analysis_files(outdir, sample_mf, true_mf, mc_data, mc_ratios,
+                         s2pc, t2pc):
+    # -------- mass function ---------------------
+    with open(join(outdir, "mf_true.dat"), "w") as f:
+        f.write("# M\tdndm_true\n")
+        np.savetxt(f, true_mf)
+
+    with open(join(outdir, "mf_sample.dat"), "w") as f:
+        f.write("# M\tdndm_sample\n")
+        np.savetxt(f, sample_mf)
+
+    # ------- mass conservation -----------------
+    mc_data.to_csv(join(outdir, "mass_conservation.dat"))
+
+    with open(join(outdir, "cell_ratios.dat"), 'w') as f:
+        for r in mc_ratios:
+            x = [str(rr) for rr in r.flatten()]
+            f.write(" ".join(x) + '\n')
+
+    # ------- 2pcf ------------------------------
+    outarray = np.zeros((s2pc.shape[0], 3))
+    outarray[:, 0] = s2pc[:, 0]
+    outarray[:, 1] = s2pc[:, 1]
+    outarray[:, 2] = t2pc[:, 1]
+    with open(join(outdir, "2pcf"), 'w') as f:
+        f.write("r\txi_sample(r)\txi_nbody(r)")
+        np.savetxt(f, outarray)
+
+def make_plots(outdir, pos, mass, r, dmpos, M, dndlnm, sample_mf, true_spl,
+               nbody_mf, s2pc, t2pc, nbody_halos):
+    # ------------ Scatter Plot of positions in x-y -------
+    plt.clf()
+    axes = plt.axes()
+    plt.scatter(dmpos[:, 0][dmpos[:, 2] < 3.0], dmpos[:, 1][dmpos[:, 2] < 3.0],
+                marker='.', color='b', s=1, alpha=0.2)
+
+    # for now make marker size prop to radius, but not equal to it :)
+    # def my_circle_scatter(axes, x_array, y_array, radius=0.5, **kwargs):
+    mask = pos[:, 2] < 3.0
+    for x, y, rad in zip(pos[:, 0][mask], pos[:, 1][mask], r[mask]):
+        circle = plt.Circle((x, y), radius=rad, color='r', alpha=0.6)
+        axes.add_patch(circle)
+
+    mask = nbody_halos[:, 2] < 3.0
+    for x, y, rad in zip(nbody_halos[:, 0][mask], nbody_halos[:, 1][mask], nbody_halos[:, 4][mask]):
+        circle = plt.Circle((x, y), radius=rad, color='g', alpha=0.6)
+        axes.add_patch(circle)
+
+    plt.xlim((0, dmpos.max()))
+    plt.ylim((0, dmpos.max()))
+    plt.savefig(join(outdir, "halopos.pdf"))
+
+    # ------------- Mass Function -------------------------
+    plt.clf()
+    plt.scatter(np.exp(sample_mf[:, 0]), sample_mf[:, 1], label="Sampled MF")
+    plt.plot(M, dndlnm, label="Theoretical MF")
+    plt.scatter(np.exp(nbody_mf[:, 0]), nbody_mf[:, 1], color='green', label="Nbody MF")
+    plt.plot(M, dndlnm + np.sqrt(dndlnm), color='red', label="Expected Deviation of MF")
+    plt.plot(M, dndlnm - np.sqrt(dndlnm), color='red')
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.ylabel(r"$\frac{dn}{d\ln m}$")
+    plt.xlabel('Mass')
+    plt.legend()
+    plt.savefig(join(outdir, "mf.pdf"))
+
+    # ------------- Diff Mass Function -------------------------
+    plt.clf()
+    plt.plot(np.exp(sample_mf[:, 0]), sample_mf[:, 1] / true_spl)
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.ylabel("Ratio of sample to theoretical MF")
+    plt.xlabel('Mass')
+    plt.savefig(join(outdir, "mf_ratio.pdf"))
+
+    #--------------- 2PCF --------------------------------------
+    plt.clf()
+    plt.plot(s2pc[:, 0], s2pc[:, 1], label="Sample")
+    plt.plot(t2pc[:, 0], t2pc[:, 1], label="NBody")
+    plt.xscale('log')
+    plt.yscale('log')
+    plt.legend()
+    plt.savefig(join(outdir, "2pcf.pdf"))
+
+if __name__ == "__main__":
+    if DEBUG:
+        sys.argv.append("-h")
+        sys.argv.append("-v")
+    if TESTRUN:
+        import doctest
+        doctest.testmod()
+    if PROFILE:
+        import cProfile
+        import pstats
+        profile_filename = 'scripts.runfast_profile.txt'
+        cProfile.run('main()', profile_filename)
+        statsfile = open("profile_stats.txt", "wb")
+        p = pstats.Stats(profile_filename, stream=statsfile)
+        stats = p.strip_dirs().sort_stats('cumulative')
+        stats.print_stats()
+        statsfile.close()
+        sys.exit(0)
+    sys.exit(main())
