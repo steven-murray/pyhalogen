@@ -230,7 +230,7 @@ fprintf(stdout,"Hi! This is place_halos.c v8.0\n");
 
 
         fprintf(stderr,"Mass[0]=%e",MassLeft[0]);
-        fprintf(stderr,"  MProb=%e\n",TotProb);
+        fprintf(stderr,"  MTot=%e\n",TotMass);
 	
 	ComputeCumulative(exp);
 //----------------------------------- Particles assigned to grid
@@ -286,7 +286,7 @@ fprintf(stdout,"Hi! This is place_halos.c v8.0\n");
 		ProbDiff = pow(MassLeft[lin_ijk],exp)-pow(Mcell,exp);
 
 		#ifdef _DEBUG
-		fprintf(stderr,"\n assigned to cell %ld=[%ld,%ld,%ld]\n Before: Mcell=%e, TotProb=%e. ",lin_ijk,i,j,k,Mcell,TotProb);
+		fprintf(stderr,"\n assigned to cell %ld=[%ld,%ld,%ld]\n Before: Mcell=%e, MTot=%e. ",lin_ijk,i,j,k,Mcell,TotMass);
 		#endif
 
                 #pragma omp parallel for private(icell) shared(CumulativeProb,ProbDiff,NTotCells,lin_ijk) default(none)
@@ -296,7 +296,7 @@ fprintf(stdout,"Hi! This is place_halos.c v8.0\n");
                 TotProb-=ProbDiff;
 
 		#ifdef _DEBUG
-		fprintf(stderr," After: Mcell=%e, Mtot=%e   ",MassLeft[lin_ijk],TotProb);
+		fprintf(stderr," After: Mcell=%e, Mtot=%e   ",MassLeft[lin_ijk],TotMass);
 		#endif
 
 		do {
@@ -688,6 +688,10 @@ long select_cell() {
         double d_rand;
 
         d_rand = TotProb * ((double)rand()/(RAND_MAX+1.0));
+
+        #ifdef _ULTRADEBUG
+        fprintf(stderr,"Rand: %e TotMass: %e  \n",d_rand,TotMass);
+        #endif
 
         i_low = 0;
         i_up  = NTotCells-1;

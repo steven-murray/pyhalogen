@@ -11,7 +11,7 @@ walltime = 00:10:00
 
 # ------------------- I/O OPTIONS ------------------------
 [IO]
-outdir_base = /scratch/partner712/savilaperez/FAST/Codes/GRID/pyfast_out
+outdir_base = ../../out/
 # Where to put analysis files (appended to outdir_base)
 outdir_anl = analysis
 
