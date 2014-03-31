@@ -14,7 +14,7 @@ import os
 #===============================================================================
 # THE DRIVER ROUTINE
 #===============================================================================
-def fast(filename, ncells=1, max_mfrac=0.01,
+def driver(filename, ncells=1, max_mfrac=0.01,
          min_halo_mass=20, tol=3, verbose=True, exclusion=True,
          alg='stat', alpha=1.0, ** mf_kwargs):
     """

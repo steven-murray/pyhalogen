@@ -43,7 +43,7 @@ plot = True
 # Whether to do post-analysis on all files run
 post_analyse = True
 # Which placing algorithm to use (stat or rank)
-alg = ["stat"]
+alg = stat
 
 # ------------------- ANALYSIS OPTIONS -------------------
 ### These only matter if analyse is True ###

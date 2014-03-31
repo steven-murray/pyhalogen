@@ -15,7 +15,7 @@ import errno
 import ast
 
 from os.path import join
-from pyfast.fast import fast
+from halogen.driver import driver
 from argparse import ArgumentParser
 from argparse import RawDescriptionHelpFormatter
 
@@ -133,7 +133,7 @@ USAGE
         #=======================================================================
         # Run FAST
         #=======================================================================
-        pos, mass, dmpos, hmf, header, frac_in_bounds, r = fast(args.filename,
+        pos, mass, dmpos, hmf, header, frac_in_bounds, r = driver(args.filename,
                                                                 ncells, max_mfrac,
                                                                 min_halo_mass, tol,
                                                                 args.verbose, exclusion,

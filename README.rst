@@ -1,5 +1,5 @@
 ------
-pyfast
+halogen
 ------
 
-Python implementation of FAST.
+Python/C routines to create fast, synthetic mock halo catalogues.

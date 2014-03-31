@@ -14,7 +14,7 @@ import traceback
 import errno
 
 import numpy as np
-from pyfast import analysis, fast
+from halogen import analysis, driver
 from os.path import join
 
 from argparse import ArgumentParser
@@ -110,7 +110,7 @@ USAGE
         std = np.empty((len(args.folders), args.nmax))
         folders = []
 
-        dm_pos, header = fast._get_gadget(args.simfile)
+        dm_pos, header = driver._get_gadget(args.simfile)
         simfolder = os.path.dirname(args.simfile)
         nbodyfile = join(simfolder, "AHF_main_halos")
 
