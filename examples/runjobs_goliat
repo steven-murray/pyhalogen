@@ -30,7 +30,7 @@ def main():
     config = cfg()
     config.read(args.configfile)
 
-    outdir_base = config.get("IO", "outdir_base")
+    # outdir_base = config.get("IO", "outdir_base")
     outdir_anl = config.get("IO", "outdir_anl")
 
     tol = json.loads(config.get("RunOptions", 'tol'))
@@ -80,7 +80,7 @@ def main():
                     outdir_part = fname + "_" + "N" + str(N) + "_m" + str(m) + "_alpha" + str(alpha)\
                                    + "_mfrac" + str(mfrac)
 
-                    fulloutdir.append(join(outdir_base, outdir_part))
+                    fulloutdir.append(join(args.outdir, outdir_part))
 
                     if not os.path.exists(fulloutdir[i]):
                         os.system("mkdir " + fulloutdir[i])
@@ -105,7 +105,7 @@ def main():
     #===========================================================================
     # Get the number for each created job
     if post_analyse:
-        outdir = join(outdir_base, outdir_anl)
+        outdir = join(args.outdir, outdir_anl)
 
         if not os.path.exists(outdir):
             os.system("mkdir " + outdir)
