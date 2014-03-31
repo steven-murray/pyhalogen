@@ -98,7 +98,7 @@ def main():
                     os.system("cp -r ../halogen %s" % join(fulloutdir[i]))
 
                     # Run the thing
-                    os.system("time runfast %s %s %s" % (args.filename, args.outdir, join(fulloutdir[i], "config")))
+                    os.system("time halogen %s %s %s" % (args.filename, args.outdir, join(fulloutdir[i], "config")))
 
     #===========================================================================
     # ANALYSIS PART
