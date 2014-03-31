@@ -49,7 +49,7 @@ def main():
     analyse = config.getboolean("RunFlags", "analyse")
     plot = config.getboolean("RunFlags", "plot")
     post_analyse = config.getboolean("RunFlags", "post_analyse")
-    alg = json.loads(config.get("RunFlags", "alg"))
+    alg = config.get("RunFlags", "alg")
 
 
     bins = config.getint("AnalyseOptions", "bins")
