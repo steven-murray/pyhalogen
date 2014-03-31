@@ -57,8 +57,8 @@ def main():
     nr = config.getint("AnalyseOptions", "nr")
 
     mf_kwargs = config.get("MFOptions", "mf_kwargs")
-
-    subprocess.call(["python", "../setup.py", "install"])
+    os.chdir("..")
+    subprocess.call(["python", "setup.py", "install"])
     subprocess.call(["rm", "-rf", "build"])
     subprocess.call(["rm", "-rf", "dist"])
 
@@ -95,7 +95,8 @@ def main():
                         CFG.write(f)
 
                     # # ALSO COPY IN THE WHOLE SOURCE CODE
-                    os.system("cp -r ../halogen %s" % join(fulloutdir[i]))
+
+                    os.system("cp -r halogen %s" % join(fulloutdir[i]))
 
                     # Run the thing
                     os.system("time halogen %s %s %s" % (args.filename, args.outdir, join(fulloutdir[i], "config")))
