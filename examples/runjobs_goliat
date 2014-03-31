@@ -58,7 +58,7 @@ def main():
 
     mf_kwargs = config.get("MFOptions", "mf_kwargs")
 
-    subprocess.call(["python", "setup.py", "install"])
+    subprocess.call(["python", "../setup.py", "install"])
     subprocess.call(["rm", "-rf", "build"])
     subprocess.call(["rm", "-rf", "dist"])
 
