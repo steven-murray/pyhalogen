@@ -99,6 +99,7 @@ def main():
                     os.system("cp -r halogen %s" % join(fulloutdir[i]))
 
                     # Run the thing
+                    os.chdir("/home/savila")
                     os.system("time halogen %s %s %s" % (args.filename, args.outdir, join(fulloutdir[i], "config")))
 
     #===========================================================================
