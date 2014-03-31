@@ -6,7 +6,6 @@ import numpy as np
 
 from numpy.ctypeslib import ndpointer
 import ctypes
-# LOCATION = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 LOCATION = os.path.dirname(os.path.abspath(__file__))
 lib = ctypes.cdll.LoadLibrary(join(LOCATION, 'place_halos.so'))
 

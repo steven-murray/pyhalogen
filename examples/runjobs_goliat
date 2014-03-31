@@ -63,7 +63,8 @@ def main():
     subprocess.call(["rm", "-rf", "dist"])
 
     # Set the number of threads.
-    os.system("export OMP_NUM_THREADS=%s" % nthreads)
+    os.environ["OMP_NUM_THREADS"] = "%s" % nthreads
+#    os.system("export OMP_NUM_THREADS=%s" % nthreads)
     #===============================================================================
     # SEND THE JOB
     #===============================================================================
@@ -96,11 +97,11 @@ def main():
 
                     # # ALSO COPY IN THE WHOLE SOURCE CODE
 
-                    os.system("cp -r halogen %s" % join(fulloutdir[i]))
+                    subprocess.call(["cp", "-r", "halogen", "%s" % join(fulloutdir[i])])
 
                     # Run the thing
                     os.chdir("/home/savila")
-                    os.system("time halogen %s %s %s" % (args.filename, args.outdir, join(fulloutdir[i], "config")))
+                    subprocess.call(["time", "halogen", "%s %s %s" % (args.filename, args.outdir, join(fulloutdir[i], "config"))])
 
     #===========================================================================
     # ANALYSIS PART
