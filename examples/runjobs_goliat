@@ -101,7 +101,7 @@ def main():
 
                     # Run the thing
                     os.chdir("/home/savila")
-                    subprocess.call(["time", "halogen", "%s" % args.filename, "%s" % args.outdir, "%s" % join(fulloutdir[i], "config")])
+                    subprocess.call(["time", "halogen", "%s" % args.filename, "%s" % fulloutdir[i], "%s" % join(fulloutdir[i], "config")])
 
     #===========================================================================
     # ANALYSIS PART
