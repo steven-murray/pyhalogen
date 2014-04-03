@@ -112,9 +112,12 @@ fprintf(stdout,"Hi! This is place_halos.c v9.0.1\n");
 	fprintf(stderr,"Using OMP with %d threads\n",omp_get_max_threads());
 	
 	//Initiallise random numbers
-	srand(seed);
+	if (seed>=0)
+		srand(seed);
+	else
+		srand(t0);
 
-	fprintf(stderr,"rand seed: %ld.    time0: %ld\n",seed,t0);
+	fprintf(stderr,"input seed: %ld.    time0: %ld\n",seed,t0);
 
 	#ifdef _CRIT
 	rho_ref = rho_crit;
