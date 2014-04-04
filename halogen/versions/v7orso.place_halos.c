@@ -2,9 +2,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h> 
-#include <omp.h> 
 
-#include "place_halos.h"
  
 //#define square(a) (a*a) 
 #define cube(a) (a*a*a) 
@@ -28,22 +26,26 @@ float rho_ref;
 
 
 long select_cell_rnd(long *, long *, long *); 
-long select_cell(); 
-long select_heaviest_cell(long *, long *, long *, double *, int, double); 
+long select_cell_one(long *, long *, long *); 
+long select_cell_two(long *, long *, long *); 
+long select_cell_three(); 
+long select_cell_pow(long *, long *, long *,float); 
+long select_heaviest_cell(long *, long *, long *, float *, int, float); 
 long select_part(long );
 int exclude_cell(long,float , float *, float *, float *, long ,long, long);
 void exclude(long,float,float *,float *,float *,long ,long,long);
 int check_HaloR(long ,float *,float *,float *,float *);
 int check_HaloR_in_mesh(long,float *, float *, float * , float *,long,long,long);
 int check_HaloR_in_cell(long ,float *, float *, float * , float *,long ,long,long);
-void ComputeCumulative(double);
+
 
 
 long **ListOfPart, **ListOfHalos, *Nexcluded, *excluded, *NPartPerCell, *NHalosPerCell;
-double *CumulativeProb; 
-double lcell,Lbox,TotProb;
+double *CumulativeMass; 
+float *MassLeft,lcell,Lbox;
 long NCells,NTotCells;
-double mpart;
+float tol,mpart;
+double TotMass = 0.;
 
 
 
@@ -53,36 +55,29 @@ float square(float a){
 	return a*a;
 }
 
+/*long cube(long a){
+	return a*a*a;
+}
+*/
 
 float R200_from_mass(float Mass) {
 	return  (float) pow((3./(4.*OVD*rho_ref*pi)*Mass),(1./3.));
 }
 
-long check_limit(long i, long N){
-	if (i==N)
-		return 0;
-	if (i<0 || i>N){
-		fprintf(stderr,"particle assigned to cell %d\nExiting...",i);
-		exit(0);
-	}
-	return i;
-		
-}
 
 
-int place_halos(long Nstart, long Nend, double *HaloMass, long Nlin, long NTotPart, float *PartX, float *PartY, float *PartZ, float L, float mp, double *alpha, double *Malpha,long Nalpha, long seed, float *HaloX, float *HaloY, float *HaloZ, double *MassLeft){
+void place_halos_Mglobal(long NHalosTot, float *HaloMass, long Nlin, long NTotPart, float *PartX, float *PartY, float *PartZ, float L, float mp, float fract, float Nmin, float exp,float *HaloX, float *HaloY, float *HaloZ){
 
-fprintf(stderr,"Hi! This is place_halos.c v10.0\n");
-fprintf(stdout,"Hi! This is place_halos.c v10.0\n");
+fprintf(stderr,"Hi! This is place_halos.c\n");
+fprintf(stdout,"Hi! This is place_halos.c\n");
 
 
 //Initiallising -------------------------------------------------
-	long i,j,k,lin_ijk,check, icell, Nmin;
-	long *count,trials;
-	long ihalo,ilong, ipart, Nhalos,i_alpha;
-	double invL = 1./L,diff,ProbDiff,Mcell,Mhalo,Mchange,exp;
-	float R; 
-	double Mmin;	
+	long i,j,k,lin_ijk,check,alpha, icell;
+	long *count, tol_nhalos=3;
+	long ihalo,ilong, ipart, Nhalos;
+	double invL = 1./L,diff,Msubs,Mcell;
+	float R, Mmin;	
 	time_t t0,t1,t2,t3,t4,t5;
 	NCells = Nlin;
 	lcell=L/NCells;
@@ -93,41 +88,33 @@ fprintf(stdout,"Hi! This is place_halos.c v10.0\n");
 
 	//temp
 	float *HaloR;	
-
+	
 	//Allocate memory for the arrays 
-if (Nstart==0){	
 	excluded = (long *) calloc(NTotPart, sizeof(long));
 	NPartPerCell = (long *) calloc(NCells*NCells*NCells,sizeof(long));
 	NHalosPerCell = (long *) calloc(NCells*NCells*NCells,sizeof(long));
-	MassLeft = (double *) calloc(NCells*NCells*NCells,sizeof(double));
+	MassLeft = (float *) calloc(NCells*NCells*NCells,sizeof(float));
 	count = (long *) calloc(NCells*NCells*NCells,sizeof(long));
 	Nexcluded = (long *) calloc(cube(NCells),sizeof(long)); 
 
-if (Nstart==0){	
 	HaloR = (float *) calloc(NHalosTot,sizeof(float));
-}
-	CumulativeProb = (double *) calloc(NTotCells, sizeof(double));
-  	if(CumulativeProb == NULL) {
-    		fprintf(stderr,"place_halos(): could not allocate %ld  array for CumulativeProb[]\nABORTING",NTotCells);
+
+	CumulativeMass = (double *) calloc(NTotCells, sizeof(double));
+  	if(CumulativeMass == NULL) {
+    		fprintf(stderr,"select_cell_three(): could not allocate %ld  array for CumulativeMass[]\nABORTING",NTotCells);
     		exit(-1);
 	}
 	fprintf(stderr,"Using OMP with %d threads\n",omp_get_max_threads());
 	
-
 	//Initiallise random numbers
-	if (seed>=0)
-		srand(seed);
-	else
-		srand(t0);
-
-	fprintf(stderr,"input seed: %ld.    time0: %ld\n",seed,t0);
+	srand (time(NULL));
 
 	#ifdef _CRIT
 	rho_ref = rho_crit;
 	#else
 	rho_ref = mp/(L*L*L)*NTotPart;
 	#endif	
-	mpart = (double) mp;
+
 
 
 #ifdef _CRIT
@@ -149,27 +136,55 @@ if (Nstart==0){
 	fprintf(stderr,"#def _ONLYBIG\n");
 #endif
 
-	Mmin = HaloMass[NHalosTot-1];
-	Nmin = (long)ceil(HaloMass[NHalosTot-1]/mp);
 
 	
 	#ifdef _VERB
-	fprintf(stderr,"\nMassFunction computed globally with hmf. Particles and Halos placed in %ld^3 cells\n",NCells);
+	fprintf(stderr,"\nMassFunction computed globally. Particles and Halos placed in %ld^3 cells\n",NCells);
 	fprintf(stderr,"Exclusion done only with haloes.\n");
 	fprintf(stderr,"BOX = %f  lcell =%f   rho_ref = %e  invL %f\n",L,lcell,rho_ref,invL);
 	fprintf(stderr,"Nhalos = %ld NPart = %ld\n",NHalosTot, NTotPart);
 	fprintf(stderr,"\nRAND_MAX=%d\n",RAND_MAX);
 	fprintf(stderr,"X[0] = %f Y[0] = %f Z[0] = %f\n",PartX[0],PartY[0],PartZ[0]);
 	fprintf(stderr,"X[1] = %f Y[1] = %f Z[1] = %f\n",PartX[1],PartY[1],PartZ[1]);
-	fprintf(stderr,"M[0] = %e \n",HaloMass[0]);
-	fprintf(stderr,"M[1] = %e \n",HaloMass[1]);
-	fprintf(stderr,"\nExclusion done only with haloes. Minimmum mass= %e. Minimum part per halo = %ld. Effective mp (not the real one) %e\n",HaloMass[NHalosTot-1],Nmin,mp);
+	fprintf(stderr,"M[0] = %f \n",HaloMass[0]);
+	fprintf(stderr,"M[1] = %f \n",HaloMass[1]);
+	fprintf(stderr,"\nExclusion done only with haloes. Minimmum mass= %e. Minimum part per halo = %f. Effective mp (not the real one) %e\n",HaloMass[NHalosTot-1],Nmin,mp);
+
+	tol=tol_nhalos*HaloMass[NHalosTot-1];
+	fprintf(stderr," Usiing mass tolerance %e, corresponging to %ld halos\n",tol,tol_nhalos);
 	#endif	
+	
+	if (exp==0.0){
+		alpha=0;
+		fprintf(stderr,"Using RANDOM cell selection\n");
+	} else 
+	if (exp==1.0){
+		alpha=1;
+		fprintf(stderr,"Using SINGLE (probability proportional to density) cell selection\n");
+	} else 
+	if (exp==2.0){
+		alpha=2;
+		fprintf(stderr,"Using SQUARE (probability proportional to density^2) cell selection\n");
+	} else 
+	if (exp==3.0){
+		alpha=3;
+		fprintf(stderr,"Using CUBE (probability proportional to density^3) cell selection\n");
+		fprintf(stderr,"Speeded up version!\n");
+	} else 
+	{
+		alpha=10;
+		fprintf(stderr,"Using POW (probability proportional to density^%f) cell selection\n",exp);
+	} 
+		
+
 
 	
 	
-
-
+	Mmin = HaloMass[NHalosTot-1];
+	if (Nmin<1){
+		fprintf(stderr,"ERROR: Halo mass can not me lower than particle mass\n");
+		exit(0);
+	}
 	t1=time(NULL);
  	diff = difftime(t1,t0);
 	fprintf(stderr,"time of initialisation %f\n",diff);
@@ -188,18 +203,15 @@ if (Nstart==0){
 		i = (long) (invL * PartX[ilong]*NCells);
 		j = (long) (invL * PartY[ilong]*NCells);
 		k = (long) (invL * PartZ[ilong]*NCells);
-		if (i<0 || i>=NCells || j<0 || j>=NCells || k<0 || k>=NCells){	
-			fprintf(stderr,"WARNING: Particle %ld at [%f,%f,%f] seems to be out of the right box interval [0.,%f)",ilong,PartX[ilong],PartY[ilong],PartZ[ilong],L);	
-			i=check_limit(i,NCells);
-			j=check_limit(j,NCells);
-			k=check_limit(k,NCells);
-			fprintf(stderr,", placed at cell [%ld,%ld,%ld]\n",i,j,k);
+		if (i<0 || i>=NCells || j<0 || j>=NCells || k<0 || k>=NCells){
+			fprintf(stderr,"ERROR: Particle %ld at [%f,%f,%f] seems to be out of the right box interval [0.,%f), placed at cell [%ld,%ld,%ld]\n",ilong,PartX[ilong],PartY[ilong],PartZ[ilong],L,i,j,k);	
+			exit(0);
 		}
 		lin_ijk = k+j*NCells+i*NCells*NCells;
 		NPartPerCell[lin_ijk]++;
 #ifdef _DEBUG
 		if(ilong<10 || ilong > NTotPart -10 || ilong==243666)
-			fprintf(stderr,"ipart=%ld  cell: %ld=[%ld,%ld,%ld] Parts in cell=%ld, Pos= [%f,%f,%f]\n",ilong,lin_ijk,i,j,k,NPartPerCell[lin_ijk],PartX[ilong],PartY[ilong],PartZ[ilong]);
+			fprintf(stderr,"ipart=%ld  cell: %ld=[%ld,%ld,%ld] N=%ld, Pos= [%f,%f,%f]\n",ilong,lin_ijk,i,j,k,NPartPerCell[lin_ijk],PartX[ilong],PartY[ilong],PartZ[ilong]);
 #endif
 	}
 #ifdef _DEBUG
@@ -218,9 +230,7 @@ if (Nstart==0){
 		ListOfPart[lin_ijk] = (long *) calloc(NPartPerCell[lin_ijk],sizeof(long));
 		Nhalos = (long) (NPartPerCell[lin_ijk]/Nmin);
 		ListOfHalos[lin_ijk] = (long *) calloc(Nhalos,sizeof(long));
-		if (Nstart==0){	
-			MassLeft[lin_ijk] = (double) NPartPerCell[lin_ijk]*mpart; 
-		}
+		MassLeft[lin_ijk] = NPartPerCell[lin_ijk]*mp; 
 #ifdef _ULTRADEBUG
 		if (lin_ijk<10 || lin_ijk > (NCells*NCells*NCells) - 10){
 			fprintf(stderr,"Allocated %ld (longs) in ListOfPart(%ld=[%ld,%ld,%ld])\n",NPartPerCell[lin_ijk],lin_ijk,i,j,k);
@@ -230,7 +240,6 @@ if (Nstart==0){
 	}	
 	}
 	}
-
 #ifdef _DEBUG
 	fprintf(stderr,"... memory allocated ...\n");
 	t3=time(NULL);
@@ -242,33 +251,23 @@ if (Nstart==0){
 		i = (long) (invL * PartX[ilong]*NCells);
 		j = (long) (invL * PartY[ilong]*NCells);
 		k = (long) (invL * PartZ[ilong]*NCells);
-		i=check_limit(i,NCells);
-		j=check_limit(j,NCells);
-		k=check_limit(k,NCells);
 		lin_ijk = k+j*NCells+i*NCells*NCells;
 		ListOfPart[lin_ijk][count[lin_ijk]] = ilong;
 		count[lin_ijk]++;
 	}
 
-
-        fprintf(stderr,"Mass_cell[0]=%e",MassLeft[0]);
-        fprintf(stderr,"  TotProb=%e\n",TotProb);
-	
-
-	Mhalo = HaloMass[0];
-	i_alpha = 0;
-	while(Mhalo<Malpha[i_alpha]) {
-		i_alpha++;
-		if (i_alpha==Nalpha){
-			fprintf(stderr,"ERROR: No alpha low enough found\n");
-			exit(0);
-		}
-	}	
-	Mchange = Malpha[i_alpha];
-	exp = alpha[i_alpha];
-	ComputeCumulative(exp);
+        for (i=0;i<NCells;i++){
+        for (j=0;j<NCells;j++){
+        for (k=0;k<NCells;k++){
+                        lin_ijk = k+j*NCells+i*NCells*NCells;
+                        TotMass += (MassLeft[lin_ijk]*MassLeft[lin_ijk]*1.0e-30*MassLeft[lin_ijk]);
+                        CumulativeMass[lin_ijk] = TotMass;
+        }
+        }
+        }
+                fprintf(stderr,"Mass[0]=%e",MassLeft[0]);
+                fprintf(stderr,"  MTot=%e\n",TotMass);
 //----------------------------------- Particles assigned to grid
-
 
 #ifdef _VERB
 	fprintf(stderr," ...done\n\n");
@@ -278,6 +277,8 @@ if (Nstart==0){
 #endif
 #ifdef _DEBUG
 	fprintf(stderr," Mass Function\n");
+	fprintf(stderr,"%e \n",HaloMass[0]);
+	fprintf(stdout,"%e \n",HaloMass[1]);
 	for (ihalo=0;ihalo<15;ihalo++){
 		fprintf(stderr,"halo %ld: ",ihalo);
 		fprintf(stderr,"M=%e\n",HaloMass[ihalo]);
@@ -288,15 +289,31 @@ if (Nstart==0){
 	fprintf(stderr,"\nPlacing Halos...\n\n");
 #endif
 
-	for (ihalo=Nstart;ihalo<Nend;ihalo++){
+	for (ihalo=0;ihalo<NHalosTot;ihalo++){
 
 		#ifdef _DEBUG
 		fprintf(stderr,"\n- Halo %ld ",ihalo);
 		#endif
 		
-				
-		lin_ijk = select_cell();
+		
 
+		switch(alpha){
+			case 0:
+				lin_ijk = select_cell_rnd(&i,&j,&k);
+				break;
+			case 1:
+				lin_ijk = select_cell_one(&i,&j,&k);
+				break;
+			case 2:
+				lin_ijk = select_cell_two(&i,&j,&k);
+				break;
+			case 3:
+				lin_ijk = select_cell_three();
+				break;
+			default:
+				lin_ijk = select_cell_pow(&i,&j,&k,exp);
+				break;
+		}
 		if(lin_ijk<0) {
 			fprintf(stderr,"Maximum Mass cell was %e\n",MassLeft[select_heaviest_cell(&i,&j,&k,MassLeft,NCells,HaloMass[ihalo])]);
 			break;
@@ -306,39 +323,34 @@ if (Nstart==0){
 		j=((lin_ijk-k)/NCells)%NCells;
 		i=(lin_ijk-k-j*NCells)/(NCells*NCells);
 
-
-                Mcell=MassLeft[lin_ijk];
-		Mhalo= HaloMass[ihalo];
-
-		while (Mhalo < Mchange){
-			i_alpha++;		
-			Mchange = Malpha[i_alpha];
-			exp = alpha[i_alpha];
-			ComputeCumulative(exp);
-		}
-
-                if (Mcell>HaloMass[ihalo])
-			MassLeft[lin_ijk] -= Mhalo; 
+		if(lin_ijk==0)
+                        Mcell=CumulativeMass[lin_ijk];
                 else
-                        MassLeft[lin_ijk] = 0.;
-
-		ProbDiff = pow(MassLeft[lin_ijk]/mpart,exp)-pow(Mcell/mpart,exp);
+                        Mcell=CumulativeMass[lin_ijk]-CumulativeMass[lin_ijk-1];
+                if (Mcell>HaloMass[ihalo])
+                        Msubs = HaloMass[ihalo]*HaloMass[ihalo]*1.0e-30*HaloMass[ihalo];
+                else
+                        Msubs = Mcell*Mcell*1.0e-30*Mcell;
 
 		#ifdef _DEBUG
-		fprintf(stderr,"\n assigned to cell %ld=[%ld,%ld,%ld]\n Before: Mcell=%e, TotProb=%e. ",lin_ijk,i,j,k,Mcell,TotProb);
+		fprintf(stderr,"\n assigned to cell %ld=[%ld,%ld,%ld]\n Before: Mcell=%e, MTot=%e. ",lin_ijk,i,j,k,Mcell,TotMass);
 		#endif
 
-                #pragma omp parallel for private(icell) shared(CumulativeProb,ProbDiff,NTotCells,lin_ijk) default(none)
-                for(icell=lin_ijk;icell<NTotCells;icell++){
-                        CumulativeProb[icell]+=ProbDiff;
+                #pragma omp parallel for private(icell) shared(CumulativeMass,Msubs,NCells,lin_ijk) default(none)
+                for(icell=lin_ijk;icell<NCells*NCells*NCells;icell++){
+                        CumulativeMass[icell]-=Msubs;
                 }
-                TotProb+=ProbDiff;
+                TotMass-=Msubs;
 
 		#ifdef _DEBUG
-		fprintf(stderr," After: Mcell=%e, TotProb=%e.   ProbDiff=%e, Mhalo=%e\n",MassLeft[lin_ijk],TotProb,ProbDiff,Mhalo);
+		if(lin_ijk==0)
+                        Mcell=CumulativeMass[lin_ijk];
+                else
+                        Mcell=CumulativeMass[lin_ijk]-CumulativeMass[lin_ijk-1];
+
+		fprintf(stderr," After: Mcell=%e, Mtot=%e   ",Mcell,TotMass);
 		#endif
-	
-		trials=0;
+
 		do {
 			ipart = select_part(lin_ijk);		
                		HaloX[ihalo] = PartX[ipart];
@@ -351,17 +363,12 @@ if (Nstart==0){
 				#ifdef _DEBUG
 				fprintf(stderr,"Refused part : %ld\n",ipart);
 				#endif
-				trials++;
 			}
-			if (trials ==20)
-				exit(-1);
 
 		} while (check==0);
-
 		#ifdef _DEBUG
-		fprintf(stderr,"halo %ld assigned to particle %ld at [%f,%f,%f]. R= %f, M= %e\n",ihalo,ipart,HaloX[ihalo],HaloY[ihalo],HaloZ[ihalo],R,Mhalo);
+		fprintf(stderr,"halo %ld assigned to particle %ld at [%f,%f,%f]. R= %f, M= %e\n",ihalo,ipart,HaloX[ihalo],HaloY[ihalo],HaloZ[ihalo],R,HaloMass[ihalo]);
 		#endif
-
 		ListOfHalos[lin_ijk][NHalosPerCell[lin_ijk]]=ihalo;
 		NHalosPerCell[lin_ijk]++;
 	}
@@ -375,20 +382,12 @@ if (Nstart==0){
 	fprintf(stderr,"\nEverything done!!!\n");
 #endif
 	free(count); free(NPartPerCell); free(ListOfPart); free(excluded);
-	free(CumulativeProb);
-	return 0;
+	free(CumulativeMass);
 }
 
 
 
-void ComputeCumulative(double alpha){
-	long i;
-	TotProb = 0.;
-	for(i=0;i<NTotCells;i++){
-		CumulativeProb[i] = TotProb + pow(MassLeft[i]/mpart,alpha);
-		TotProb = CumulativeProb[i];
-	}
-}
+
 
 
 
@@ -701,7 +700,7 @@ long select_part(long ijk){
 	return ipart;
 }
 
-long select_heaviest_cell(long *x, long *y, long *z, double *MassArray, int N, double M) {
+long select_heaviest_cell(long *x, long *y, long *z, float *MassArray, int N, float M) {
 	long i,j,k,lin_ijk, out_ijk;
 	float max=0.0;	
 	for (i=0;i<N;i++){
@@ -727,27 +726,168 @@ long select_cell_rnd(long *x, long *y, long *z) {
 	return (*z)+(*y)*NCells+(*x)*NCells*NCells;
 }
 
-long select_cell() {
-        long   i_low, i_up, i_mid;
-        double d_rand;
 
-        d_rand = TotProb * ((double)rand()/(RAND_MAX+1.0));
 
-        i_low = 0;
-        i_up  = NTotCells-1;
-        while(i_low < i_up) {
-                i_mid = (i_low+i_up)/2;
-                if(d_rand < CumulativeProb[i_mid])
-                        i_up  = i_mid;
-                else
-                        i_low = i_mid + 1;
-         }
-        return(i_low);
+
+long select_cell_one(long *x,long *y, long *z) {
+	long i,j,k,lin_ijk;
+	double TotMass = 0., d_rand;
+
+	for (i=0;i<NCells;i++){
+	for (j=0;j<NCells;j++){
+	for (k=0;k<NCells;k++){
+		lin_ijk = k+j*NCells+i*NCells*NCells;
+		TotMass += (double) (MassLeft[lin_ijk]);
+
+	}
+	}
+	}
+
+	d_rand = TotMass * ((double)rand()/(RAND_MAX+1.0));
+
+	#ifdef _ULTRADEBUG
+	fprintf(stderr,"Rand: %e TotMass: %e  HaloMass: %e.    ",d_rand,TotMass,M);
+	#endif
+
+	TotMass = 0.;
+
+	for (i=0;i<NCells;i++){
+	for (j=0;j<NCells;j++){
+	for (k=0;k<NCells;k++){
+		lin_ijk = k+j*NCells+i*NCells*NCells;
+		TotMass += (double) (MassLeft[lin_ijk]);
+		#ifdef _ULTRADEBUG
+		fprintf(stderr,"%e, ",TotMass);
+		#endif
+		if (TotMass > d_rand){
+                        *x=i;
+                        *y=j;
+                        *z=k;
+			return lin_ijk;
+		}
+	}
+	}
+	}
+	fprintf(stderr,"ERROR: no cell selected: TotMass = %e, rnd = %e. th= , tol =%e\n",TotMass,d_rand,tol);
+	return -1;		
 }
 
 
 
 
+long select_cell_two(long *x,long *y, long *z) {
+	long i,j,k,lin_ijk;
+	double TotMass = 0., d_rand;
+
+	for (i=0;i<NCells;i++){
+	for (j=0;j<NCells;j++){
+	for (k=0;k<NCells;k++){
+		lin_ijk = k+j*NCells+i*NCells*NCells;
+		TotMass += (double) (MassLeft[lin_ijk]*MassLeft[lin_ijk]);
+
+	}
+	}
+	}
+
+	d_rand = TotMass * ((double)rand()/(RAND_MAX+1.0));
+
+	#ifdef _ULTRADEBUG
+	fprintf(stderr,"Rand: %e TotMass: %e  HaloMass: %e.    ",d_rand,TotMass,M);
+	#endif
+
+	TotMass = 0.;
+
+	for (i=0;i<NCells;i++){
+	for (j=0;j<NCells;j++){
+	for (k=0;k<NCells;k++){
+		lin_ijk = k+j*NCells+i*NCells*NCells;
+		TotMass += (double) (MassLeft[lin_ijk]*MassLeft[lin_ijk]);
+		#ifdef _ULTRADEBUG
+		fprintf(stderr,"%e, ",TotMass);
+		#endif
+		if (TotMass > d_rand){
+			*x=i;
+                        *y=j;
+                        *z=k;
+			return lin_ijk;
+		}
+	}
+	}
+	}
+	fprintf(stderr,"ERROR: no cell selected: TotMass = %e, rnd = %e. th= , tol =%e\n",TotMass,d_rand,tol);
+	return -1;		
+}
+
+
+
+
+long select_cell_three() {
+	long   i_low, i_up, i_mid;
+	double d_rand;
+
+	d_rand = TotMass * ((double)rand()/(RAND_MAX+1.0));
+
+	#ifdef _ULTRADEBUG
+        fprintf(stderr,"Rand: %e TotMass: %e  \n",d_rand,TotMass);
+        #endif
+
+        i_low = 0;
+        i_up  = NTotCells-1;
+        while(i_low < i_up) {
+                i_mid = (i_low+i_up)/2;
+                if(d_rand < CumulativeMass[i_mid])
+                        i_up  = i_mid;
+                else
+                        i_low = i_mid + 1;
+         }
+        return(i_low);
+
+}
+
+
+
+long select_cell_pow(long *x,long *y, long *z, float exp) {
+	long i,j,k,lin_ijk;
+	double TotMass = 0., d_rand;
+
+	for (i=0;i<NCells;i++){
+	for (j=0;j<NCells;j++){
+	for (k=0;k<NCells;k++){
+		lin_ijk = k+j*NCells+i*NCells*NCells;
+		TotMass += (double) pow((MassLeft[lin_ijk]*1.0e-10),exp);
+
+	}
+	}
+	}
+
+	d_rand = TotMass * ((double)rand()/(RAND_MAX+1.0));
+
+	#ifdef _ULTRADEBUG
+	fprintf(stderr,"Rand: %e TotMass: %e  HaloMass: %e.    ",d_rand,TotMass,M);
+	#endif
+
+	TotMass = 0.;
+
+	for (i=0;i<NCells;i++){
+	for (j=0;j<NCells;j++){
+	for (k=0;k<NCells;k++){
+		lin_ijk = k+j*NCells+i*NCells*NCells;
+		TotMass += (double) pow(MassLeft[lin_ijk]*1.0e-10,exp);
+		#ifdef _ULTRADEBUG
+		fprintf(stderr,"%e, ",TotMass);
+		#endif
+		if (TotMass > d_rand){
+			*x=i;
+			*y=j;
+			*z=k;
+			return lin_ijk;
+		}
+	}
+	}
+	}
+	fprintf(stderr,"ERROR: no cell selected: TotMass = %e, rnd = %e. th= , tol =%e\n",TotMass,d_rand,tol);
+	return -1;		
+}
 
 int check_HaloR_in_cell(long ipart,float *PartX, float *PartY, float *PartZ, float *PartR, long i,long j, long k){
         long jpart,jj;
