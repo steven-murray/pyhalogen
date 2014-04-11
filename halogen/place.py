@@ -37,8 +37,7 @@ def place_halos(halomasses, dm_pos, boxsize, omegam, ncells,
 
     if alg == 'stat':
         return _place_halos_weighted(halomasses, dm_pos, ncells, boxsize,
-                                     mp, alpha, mcuts, len(alpha), omegam,
-                                     seed)
+                                     mp, alpha, mcuts, omegam, seed)
 
 #         return halopos, r
 
@@ -50,7 +49,7 @@ def r200(m, omegam):
     return (3 * m / (4 * np.pi * 200 * 27.755 * 10 ** 10)) ** (1. / 3.)
 
 def _place_halos_weighted(halomasses, dm_pos, ncells, boxsize, mp,
-                          alpha, mcuts, seed, omegam):
+                          alpha, mcuts, omegam, seed):
 
     cplace_halos_mglobal = lib.place_halos  # _Mglobal
     cplace_halos_mglobal.restype = None
