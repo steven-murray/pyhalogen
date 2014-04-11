@@ -138,7 +138,7 @@ def run_2pcorr(cute_makefile, data_file, boxsize, nr=24, rmax=None,
 
     s2pcf = _np.genfromtxt(join(tmp_prefix, "tpc"))
 
-    print s2pcf
+
     # os.system("rm %s" % join(tmp_prefix, "tpc*"))
     return s2pcf[:, :2]
 
