@@ -53,7 +53,7 @@ def _place_halos_weighted(halomasses, dm_pos, ncells, boxsize, mp,
 
     cplace_halos_mglobal = lib.place_halos  # _Mglobal
     cplace_halos_mglobal.restype = None
-    cplace_halos_mglobal.argtypes = [ctypes.c_long, ndpointer(ctypes.c_float),
+    cplace_halos_mglobal.argtypes = [ctypes.c_long, ndpointer(ctypes.c_double),
                                      ctypes.c_long, ctypes.c_long,
                                      ndpointer(ctypes.c_float),
                                      ndpointer(ctypes.c_float), ndpointer(ctypes.c_float),
@@ -77,7 +77,7 @@ def _place_halos_weighted(halomasses, dm_pos, ncells, boxsize, mp,
 
 #     alpha = alpha.astype('float32')
 #     mcuts = mcuts.astype('float32')
-    halomasses = halomasses.astype('float32')
+#    halomasses = halomasses.astype('float32')
 
     dmx = dm_pos[:, 0].copy()
     dmy = dm_pos[:, 1].copy()
@@ -85,8 +85,7 @@ def _place_halos_weighted(halomasses, dm_pos, ncells, boxsize, mp,
 
     cplace_halos_mglobal(len(halomasses), halomasses, ncells,
                          dm_pos.shape[0], dmx, dmy, dmz, boxsize,
-                         np.float32(mp),
-                         alpha, mcuts, len(alpha), seed, x, y, z)
+                         np.float32(mp), alpha, mcuts, len(alpha), seed, x, y, z)
 
     return np.vstack((x, y, z)).T, r200(halomasses, omegam)  # , grid
 
