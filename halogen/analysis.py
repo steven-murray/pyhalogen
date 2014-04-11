@@ -127,7 +127,7 @@ def run_2pcorr(cute_makefile, data_file, boxsize, nr=24, rmax=None,
                 f.write(line)
 
         os.system("make clean")
-        os.system("make CUTE_box")
+        os.system("make -f %s CUTE_box" % cute_makefile)
 
     # Create the data tables we need.
     with open(join(tmp_prefix, "tpcinput.in"), 'w') as f:
