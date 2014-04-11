@@ -4,7 +4,7 @@
 #include <math.h> 
 #include <omp.h> 
 
-#include "place_halos.h"
+//#include "place_halos.h"
  
 //#define square(a) (a*a) 
 #define cube(a) (a*a*a) 

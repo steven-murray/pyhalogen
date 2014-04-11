@@ -1,6 +1,4 @@
 import os
-import sys
-import inspect
 from os.path import join
 import numpy as np
 
@@ -10,9 +8,8 @@ LOCATION = os.path.dirname(os.path.abspath(__file__))
 lib = ctypes.cdll.LoadLibrary(join(LOCATION, 'place_halos.so'))
 
 def place_halos(halomasses, dm_pos, boxsize, omegam, ncells,
-                mp, frac_in_halos, M_min, alpha, mcuts, seed=150, exclusion=True,
-                verbose=True, alg="stat", return_grid=False,
-                grid=None, halopos=None):
+                mp, alpha, mcuts, seed=-1, exclusion=True,
+                verbose=True, alg="stat"):
     """
     A wrapper for the c-code which places halos spatially
     
@@ -35,56 +32,52 @@ def place_halos(halomasses, dm_pos, boxsize, omegam, ncells,
         Final positions of the halos
         
     """
-    sys.stderr.write("LENGTH OF HALOMASSES: %s\n" % len(halomasses))
-
-    if nend is None:
-        nend = len(halomasses) - 1
+#     if nend is None:
+#         nend = len(halomasses) - 1
 
     if alg == 'stat':
-        halopos, r, grid = _place_halos_weighted(halomasses, dm_pos, ncells, boxsize, frac_in_halos,
-                                              mp, M_min, alpha, mcuts, len(alpha), omegam,
-                                              grid, halopos)
-        if return_grid:
-            return halopos, r, grid
-        else:
-            return halopos, r
+        return _place_halos_weighted(halomasses, dm_pos, ncells, boxsize,
+                                     mp, alpha, mcuts, len(alpha), omegam,
+                                     seed)
+
+#         return halopos, r
 
     elif alg == "rank":
-        return _place_halos_rank(halomasses, dm_pos, ncells, boxsize, frac_in_halos,
-                                 mp, M_min, omegam)
+        return _place_halos_rank(halomasses, dm_pos, ncells, boxsize,
+                                 mp, omegam)
 
 def r200(m, omegam):
     return (3 * m / (4 * np.pi * 200 * 27.755 * 10 ** 10)) ** (1. / 3.)
 
-def _place_halos_weighted(halomasses, dm_pos, ncells, boxsize, frac_in_halos, mp, M_min,
-                          alpha, mcuts, seed, omegam, grid, halopos):
+def _place_halos_weighted(halomasses, dm_pos, ncells, boxsize, mp,
+                          alpha, mcuts, seed, omegam):
 
-    cplace_halos_mglobal = lib.place_halos_Mglobal
+    cplace_halos_mglobal = lib.place_halos  # _Mglobal
     cplace_halos_mglobal.restype = None
     cplace_halos_mglobal.argtypes = [ctypes.c_long, ndpointer(ctypes.c_float),
                                      ctypes.c_long, ctypes.c_long,
                                      ndpointer(ctypes.c_float),
                                      ndpointer(ctypes.c_float), ndpointer(ctypes.c_float),
                                      ctypes.c_float, ctypes.c_float,
-                                     ctypes.c_float, ctypes.c_float,
-                                     ndpointer(ctypes.c_float), ndpointer(ctypes.c_float),
-                                     ctypes.c_long,  # ctypes.c_long,
+                                     # ctypes.c_float, ctypes.c_float,
+                                     ndpointer(ctypes.c_double), ndpointer(ctypes.c_double),
+                                     ctypes.c_long, ctypes.c_long,
                                      ndpointer(ctypes.c_float), ndpointer(ctypes.c_float),
                                      ndpointer(ctypes.c_float)]
-    if halopos is None:
-        x = np.zeros(len(halomasses)).astype('float32')
-        y = np.zeros(len(halomasses)).astype('float32')
-        z = np.zeros(len(halomasses)).astype('float32')
-    else:
-        x = halopos[:, 0].copy()
-        y = halopos[:, 1].copy()
-        z = halopos[:, 2].copy()
+#     if halopos is None:
+    x = np.zeros(len(halomasses)).astype('float32')
+    y = np.zeros(len(halomasses)).astype('float32')
+    z = np.zeros(len(halomasses)).astype('float32')
+#     else:
+#     x = halopos[:, 0].copy()
+#     y = halopos[:, 1].copy()
+#     z = halopos[:, 2].copy()
 
-    if grid is None:
-        grid = np.zeros(ncells ** 3).astype('float32')
+#     if grid is None:
+#         grid = np.zeros(ncells ** 3).astype('float32')
 
-    alpha = alpha.astype('float32')
-    mcuts = mcuts.astype('float32')
+#     alpha = alpha.astype('float32')
+#     mcuts = mcuts.astype('float32')
     halomasses = halomasses.astype('float32')
 
     dmx = dm_pos[:, 0].copy()
@@ -93,10 +86,10 @@ def _place_halos_weighted(halomasses, dm_pos, ncells, boxsize, frac_in_halos, mp
 
     cplace_halos_mglobal(len(halomasses), halomasses, ncells,
                          dm_pos.shape[0], dmx, dmy, dmz, boxsize,
-                         np.float32(mp), frac_in_halos, M_min,
-                         alpha, mcuts, len(alpha), x, y, z)
+                         np.float32(mp),
+                         alpha, mcuts, len(alpha), seed, x, y, z)
 
-    return np.vstack((x, y, z)).T, r200(halomasses, omegam), grid
+    return np.vstack((x, y, z)).T, r200(halomasses, omegam)  # , grid
 
 def _place_halos_rank(halomasses, dm_pos, ncells, boxsize, frac_in_halos, mp, M_min,
                         omegam):

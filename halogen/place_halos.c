@@ -4,6 +4,7 @@
 #include <math.h> 
 #include <omp.h> 
 
+//#include "place_halos.h"
  
 //#define square(a) (a*a) 
 #define cube(a) (a*a*a) 
@@ -28,7 +29,7 @@ float rho_ref;
 
 long select_cell_rnd(long *, long *, long *); 
 long select_cell(); 
-long select_heaviest_cell(long *, long *, long *, double *, int, float); 
+long select_heaviest_cell(long *, long *, long *, double *, int, double); 
 long select_part(long );
 int exclude_cell(long,float , float *, float *, float *, long ,long, long);
 void exclude(long,float,float *,float *,float *,long ,long,long);
@@ -52,29 +53,36 @@ float square(float a){
 	return a*a;
 }
 
-/*long cube(long a){
-	return a*a*a;
-}
-*/
 
 float R200_from_mass(float Mass) {
 	return  (float) pow((3./(4.*OVD*rho_ref*pi)*Mass),(1./3.));
 }
 
+long check_limit(long i, long N){
+	if (i==N)
+		return 0;
+	if (i<0 || i>N){
+		fprintf(stderr,"particle assigned to cell %d\nExiting...",i);
+		exit(0);
+	}
+	return i;
+		
+}
 
 
-void place_halos_Mglobal(long NHalosTot, float *HaloMass, long Nlin, long NTotPart, float *PartX, float *PartY, float *PartZ, float L, float mp, float fract, float Nmin, double *alpha, double *Malpha,long Nalpha,float *HaloX, float *HaloY, float *HaloZ){
+int place_halos(long NHalosTot, double *HaloMass, long Nlin, long NTotPart, float *PartX, float *PartY, float *PartZ, float L, float mp, double *alpha, double *Malpha,long Nalpha, long seed, float *HaloX, float *HaloY, float *HaloZ){
 
-fprintf(stderr,"Hi! This is place_halos.c v8.1.2\n");
-fprintf(stdout,"Hi! This is place_halos.c v8.1.2\n");
+fprintf(stderr,"Hi! This is place_halos.c v9.0.1\n");
+fprintf(stdout,"Hi! This is place_halos.c v9.0.1\n");
 
 
 //Initiallising -------------------------------------------------
-	long i,j,k,lin_ijk,check, icell;
-	long *count;
+	long i,j,k,lin_ijk,check, icell, Nmin;
+	long *count,trials;
 	long ihalo,ilong, ipart, Nhalos,i_alpha;
 	double invL = 1./L,diff,ProbDiff,Mcell,Mhalo,Mchange,exp;
-	float R, Mmin;	
+	float R; 
+	double Mmin;	
 	time_t t0,t1,t2,t3,t4,t5;
 	NCells = Nlin;
 	lcell=L/NCells;
@@ -104,7 +112,12 @@ fprintf(stdout,"Hi! This is place_halos.c v8.1.2\n");
 	fprintf(stderr,"Using OMP with %d threads\n",omp_get_max_threads());
 	
 	//Initiallise random numbers
-	srand (time(NULL));
+	if (seed>=0)
+		srand(seed);
+	else
+		srand(t0);
+
+	fprintf(stderr,"input seed: %ld.    time0: %ld\n",seed,t0);
 
 	#ifdef _CRIT
 	rho_ref = rho_crit;
@@ -133,6 +146,8 @@ fprintf(stdout,"Hi! This is place_halos.c v8.1.2\n");
 	fprintf(stderr,"#def _ONLYBIG\n");
 #endif
 
+	Mmin = HaloMass[NHalosTot-1];
+	Nmin = (long)ceil(HaloMass[NHalosTot-1]/mp);
 
 	
 	#ifdef _VERB
@@ -143,18 +158,15 @@ fprintf(stdout,"Hi! This is place_halos.c v8.1.2\n");
 	fprintf(stderr,"\nRAND_MAX=%d\n",RAND_MAX);
 	fprintf(stderr,"X[0] = %f Y[0] = %f Z[0] = %f\n",PartX[0],PartY[0],PartZ[0]);
 	fprintf(stderr,"X[1] = %f Y[1] = %f Z[1] = %f\n",PartX[1],PartY[1],PartZ[1]);
-	fprintf(stderr,"M[0] = %f \n",HaloMass[0]);
-	fprintf(stderr,"M[1] = %f \n",HaloMass[1]);
-	fprintf(stderr,"\nExclusion done only with haloes. Minimmum mass= %e. Minimum part per halo = %f. Effective mp (not the real one) %e\n",HaloMass[NHalosTot-1],Nmin,mp);
+	fprintf(stderr,"M[0] = %e \n",HaloMass[0]);
+	fprintf(stderr,"M[1] = %e \n",HaloMass[1]);
+	fprintf(stderr,"\nExclusion done only with haloes. Minimmum mass= %e. Minimum part per halo = %ld. Effective mp (not the real one) %e\n",HaloMass[NHalosTot-1],Nmin,mp);
 	#endif	
 
 	
 	
-	Mmin = HaloMass[NHalosTot-1];
-	if (Nmin<1){
-		fprintf(stderr,"ERROR: Halo mass can not me lower than particle mass\n");
-		exit(0);
-	}
+
+
 	t1=time(NULL);
  	diff = difftime(t1,t0);
 	fprintf(stderr,"time of initialisation %f\n",diff);
@@ -173,15 +185,18 @@ fprintf(stdout,"Hi! This is place_halos.c v8.1.2\n");
 		i = (long) (invL * PartX[ilong]*NCells);
 		j = (long) (invL * PartY[ilong]*NCells);
 		k = (long) (invL * PartZ[ilong]*NCells);
-		if (i<0 || i>=NCells || j<0 || j>=NCells || k<0 || k>=NCells){
-			fprintf(stderr,"ERROR: Particle %ld at [%f,%f,%f] seems to be out of the right box interval [0.,%f), placed at cell [%ld,%ld,%ld]\n",ilong,PartX[ilong],PartY[ilong],PartZ[ilong],L,i,j,k);	
-			exit(0);
+		if (i<0 || i>=NCells || j<0 || j>=NCells || k<0 || k>=NCells){	
+			fprintf(stderr,"WARNING: Particle %ld at [%f,%f,%f] seems to be out of the right box interval [0.,%f)",ilong,PartX[ilong],PartY[ilong],PartZ[ilong],L);	
+			i=check_limit(i,NCells);
+			j=check_limit(j,NCells);
+			k=check_limit(k,NCells);
+			fprintf(stderr,", placed at cell [%ld,%ld,%ld]\n",i,j,k);
 		}
 		lin_ijk = k+j*NCells+i*NCells*NCells;
 		NPartPerCell[lin_ijk]++;
 #ifdef _DEBUG
 		if(ilong<10 || ilong > NTotPart -10 || ilong==243666)
-			fprintf(stderr,"ipart=%ld  cell: %ld=[%ld,%ld,%ld] N=%ld, Pos= [%f,%f,%f]\n",ilong,lin_ijk,i,j,k,NPartPerCell[lin_ijk],PartX[ilong],PartY[ilong],PartZ[ilong]);
+			fprintf(stderr,"ipart=%ld  cell: %ld=[%ld,%ld,%ld] Parts in cell=%ld, Pos= [%f,%f,%f]\n",ilong,lin_ijk,i,j,k,NPartPerCell[lin_ijk],PartX[ilong],PartY[ilong],PartZ[ilong]);
 #endif
 	}
 #ifdef _DEBUG
@@ -222,6 +237,9 @@ fprintf(stdout,"Hi! This is place_halos.c v8.1.2\n");
 		i = (long) (invL * PartX[ilong]*NCells);
 		j = (long) (invL * PartY[ilong]*NCells);
 		k = (long) (invL * PartZ[ilong]*NCells);
+		i=check_limit(i,NCells);
+		j=check_limit(j,NCells);
+		k=check_limit(k,NCells);
 		lin_ijk = k+j*NCells+i*NCells*NCells;
 		ListOfPart[lin_ijk][count[lin_ijk]] = ilong;
 		count[lin_ijk]++;
@@ -312,9 +330,10 @@ fprintf(stdout,"Hi! This is place_halos.c v8.1.2\n");
                 TotProb+=ProbDiff;
 
 		#ifdef _DEBUG
-		fprintf(stderr," After: Mcell=%e, TotProb=%e   ",MassLeft[lin_ijk],TotProb);
+		fprintf(stderr," After: Mcell=%e, TotProb=%e.   ProbDiff=%e, Mhalo=%e\n",MassLeft[lin_ijk],TotProb,ProbDiff,Mhalo);
 		#endif
-
+	
+		trials=0;
 		do {
 			ipart = select_part(lin_ijk);		
                		HaloX[ihalo] = PartX[ipart];
@@ -327,7 +346,10 @@ fprintf(stdout,"Hi! This is place_halos.c v8.1.2\n");
 				#ifdef _DEBUG
 				fprintf(stderr,"Refused part : %ld\n",ipart);
 				#endif
+				trials++;
 			}
+			if (trials ==20)
+				exit(-1);
 
 		} while (check==0);
 
@@ -349,6 +371,7 @@ fprintf(stdout,"Hi! This is place_halos.c v8.1.2\n");
 #endif
 	free(count); free(NPartPerCell); free(ListOfPart); free(excluded);
 	free(CumulativeProb);
+	return 0;
 }
 
 
@@ -673,7 +696,7 @@ long select_part(long ijk){
 	return ipart;
 }
 
-long select_heaviest_cell(long *x, long *y, long *z, double *MassArray, int N, float M) {
+long select_heaviest_cell(long *x, long *y, long *z, double *MassArray, int N, double M) {
 	long i,j,k,lin_ijk, out_ijk;
 	float max=0.0;	
 	for (i=0;i<N;i++){
