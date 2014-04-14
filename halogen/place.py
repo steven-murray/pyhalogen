@@ -32,7 +32,7 @@ class HaloPlacer(object):
                  mp, alpha, mcuts, seed=-1,
                  rho_ref=2.7755e11):
 
-        self._halomasses = halomasses
+        self._halomasses = halomasses.astype('float32')
         self._L = np.float32(L)
         self._ncells = ncells
         self._mp = np.float32(mp)
