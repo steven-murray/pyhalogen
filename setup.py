@@ -15,8 +15,8 @@ def read(fname):
 
 module1 = Extension('halogen.place_halos',
                     sources=['halogen/place_halos.c'],
-                    libraries=['m', 'gomp'],
-                    extra_compile_args=["-fopenmp", "-O2", "-std=c99"])
+                    libraries=['m'],
+                    extra_compile_args=["-fopenmp", "-O2"])
 
 setup(
     name="halogen",
