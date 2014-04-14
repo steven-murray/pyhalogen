@@ -68,8 +68,8 @@ class HaloPlacer(object):
 
     @property
     def halopos(self):
-        length = len(np.logical_not(np.isnan(x)))
-        return np.vstack((x[:length], y[:length], z[:length])).T
+        length = len(np.logical_not(np.isnan(self._x)))
+        return np.vstack((self._x[:length], self._y[:length], self._z[:length])).T
 
     @property
     def r(self):
