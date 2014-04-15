@@ -30,7 +30,7 @@ class HaloPlacer(object):
 
     def __init__(self, halomasses, dm_pos, L, ncells,
                  mp, alpha, mcuts, seed=-1,
-                 rho_ref=2.7755e11):
+                 rho_ref=2.7755e11, keep_lastiter=False):
 
         self._halomasses = halomasses.astype('float32')
         self._L = np.float32(L)
@@ -41,7 +41,7 @@ class HaloPlacer(object):
         self._seed = seed
         self._rho_ref = np.float32(rho_ref)
         self._ndm = dm_pos.shape[0]
-
+        self._keep_last_iter = keep_lastiter
         self._dmx = dm_pos[:, 0].copy()
         self._dmy = dm_pos[:, 1].copy()
         self._dmz = dm_pos[:, 2].copy()
@@ -51,20 +51,36 @@ class HaloPlacer(object):
         self._y = np.empty(len(halomasses)).astype('float32')
         self._z = np.empty(len(halomasses)).astype('float32')
         self._r = np.empty(len(halomasses)).astype('float32')
+
         self._massleft = np.empty(ncells ** 3)
 
         # The total number of halos placed so far.
         self.nhalos_placed = 0
+
+        if keep_lastiter:
+            self._old_massleft = np.empty(ncells ** 3)
+            self._old_nhalos_placed = 0
 
     def place(self, nstart=0, nend=None):
         if nend is None:
             nend = len(self._halomasses)
 
         if nstart != self.nhalos_placed:
-            raise ValueError("nstart must be the same as the last halo placed.")
+            if self.keep_last_iter:
+                if nstart != self._old_nhalos_placed:
+                    raise ValueError("nstart must be the same as the last halo placed.")
+            else:
+                raise ValueError("nstart must be the same as the last halo placed.")
 
-        # Increment the total halos placed.
-        self.nhalos_placed += nend - nstart
+        if not self._keep_last_iter:
+            # Increment the total halos placed.
+            self.nhalos_placed += nend - nstart
+        else:
+            if nstart == self._old_nhalos_placed:
+                self._massleft = self._old_massleft
+            else:
+                self._old_nhalos_placed = self.nhalos_placed
+                self.nhalos_placed += nend - nstart
 
         cplace_halos(nstart, nend, self._halomasses, self._ncells,
                      self._ndm, self._dmx, self._dmy, self._dmz, self._L,
