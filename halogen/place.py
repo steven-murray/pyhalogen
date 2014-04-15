@@ -4,7 +4,7 @@ import numpy as np
 
 from numpy.ctypeslib import ndpointer
 import ctypes
-
+from copy import copy
 #===============================================================================
 # SET UP INTERFACE
 #===============================================================================
@@ -79,13 +79,13 @@ class HaloPlacer(object):
 
         if not self._keep_last_iter:
             # Increment the total halos placed.
-            self.nhalos_placed += nend - nstart
+            self.nhalos_placed = nend
         else:
             if nstart == self._old_nhalos_placed:
                 self._massleft = self._old_massleft
             else:
-                self._old_nhalos_placed = self.nhalos_placed
-                self.nhalos_placed += nend - nstart
+                self._old_nhalos_placed = copy(self.nhalos_placed)
+                self.nhalos_placed = nend
 
         cplace_halos(nstart, nend, self._halomasses, self._ncells,
                      self._ndm, self._dmx, self._dmy, self._dmz, self._L,
