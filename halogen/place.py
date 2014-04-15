@@ -59,7 +59,7 @@ class HaloPlacer(object):
 
         if keep_lastiter:
             self._old_massleft = np.empty(ncells ** 3)
-            self._old_nhalos_placed = 0
+            self._old_nhalos_placed = -1
 
     def place(self, nstart=0, nend=None):
         if nend is None:
