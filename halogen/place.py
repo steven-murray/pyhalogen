@@ -66,7 +66,7 @@ class HaloPlacer(object):
             nend = len(self._halomasses)
 
         if nstart != self.nhalos_placed:
-            if self.keep_last_iter:
+            if self._keep_last_iter:
                 if nstart != self._old_nhalos_placed:
                     raise ValueError("nstart must be the same as the last halo placed.")
             else:
