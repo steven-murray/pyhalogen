@@ -65,6 +65,11 @@ class HaloPlacer(object):
         if nend is None:
             nend = len(self._halomasses)
 
+        print "NSTART: ", nstart
+        print "NEND: ", nend
+        print "HALOS PLACED: ", self.nhalos_placed
+        print "OLD HALOS PLACED: ", self._old_nhalos_placed
+
         if nstart != self.nhalos_placed:
             if self._keep_last_iter:
                 if nstart != self._old_nhalos_placed:
