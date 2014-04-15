@@ -53,12 +53,18 @@ class HaloPlacer(object):
         self._r = np.empty(len(halomasses)).astype('float32')
         self._massleft = np.empty(ncells ** 3)
 
+        # The total number of halos placed so far.
+        self.nhalos_placed = 0
+
     def place(self, nstart=0, nend=None):
         if nend is None:
-            nend = len(self._halomasses) - 1
+            nend = len(self._halomasses)
 
-        if nstart != 0 and np.isnan(self._x[0]):
-            raise ValueError("The first time place() is called must have nstart=0")
+        if nstart != self.nhalos_placed:
+            raise ValueError("nstart must be the same as the last halo placed.")
+
+        # Increment the total halos placed.
+        self.nhalos_placed += nend - nstart
 
         cplace_halos(nstart, nend, self._halomasses, self._ncells,
                      self._ndm, self._dmx, self._dmy, self._dmz, self._L,
@@ -68,8 +74,9 @@ class HaloPlacer(object):
 
     @property
     def halopos(self):
-        length = len(np.logical_not(np.isnan(self._x)))
-        return np.vstack((self._x[:length], self._y[:length], self._z[:length])).T
+        return np.vstack((self._x[:self.nhalos_placed],
+                          self._y[:self.nhalos_placed],
+                          self._z[:self.nhalos_placed])).T
 
     @property
     def r(self):
