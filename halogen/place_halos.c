@@ -373,8 +373,8 @@ fprintf(stderr,"\tThis is place_halos.c v10.2\n");
 	fprintf(stderr,"\n\tPlacement done!!!\n");
 #endif
 	free(count); free(NPartPerCell); free(ListOfPart);
-	free(CumulativeProb); free(MassLeft); free(HaloX); free(HaloY);
-	free(HaloZ);
+	free(CumulativeProb); free(MassLeft); //free(HaloX); free(HaloY);
+	//free(HaloZ);
 	return 0;
 }
 
