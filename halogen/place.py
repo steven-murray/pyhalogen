@@ -76,7 +76,7 @@ class HaloPlacer(object):
         print "HALOMASSES size: ", self._halomasses.nbytes
         print "DM x,y,x size: ", self._dmx.nbytes, self._dmy.nbytes, self._dmz.nbytes
         print "massleft, old size: ", self._massleft.nbytes, self._old_massleft.nbytes
-        print "alpha size: ", self._alpha.nbtyes
+        print "alpha size: ", self._alpha.nbytes
         print "mcuts size: ", self._mcuts.nbytes
         if nstart != self.nhalos_placed:
             if self._keep_last_iter:
