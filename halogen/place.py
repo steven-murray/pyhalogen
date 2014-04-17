@@ -5,6 +5,12 @@ import numpy as np
 from numpy.ctypeslib import ndpointer
 import ctypes
 import sys
+import psutil
+def memory_usage_psutil():
+    # return the memory usage in MB
+    process = psutil.Process(os.getpid())
+    mem = process.get_memory_info()[0] / float(2 ** 20)
+    return mem
 #===============================================================================
 # SET UP INTERFACE
 #===============================================================================
@@ -78,6 +84,7 @@ class HaloPlacer(object):
         print "massleft, old size: ", self._massleft.nbytes, self._old_massleft.nbytes
         print "alpha size: ", self._alpha.nbytes
         print "mcuts size: ", self._mcuts.nbytes
+
         if nstart != self.nhalos_placed:
             if self._keep_last_iter:
                 if nstart != self._old_nhalos_placed:
@@ -95,12 +102,13 @@ class HaloPlacer(object):
                 self._old_nhalos_placed = self.nhalos_placed
                 self.nhalos_placed = nend
 
+        print "TOTAL MEMORY USED BEFORE: ", memory_usage_psutil()
         cplace_halos(nstart, nend, self._halomasses, self._ncells,
                      self._ndm, self._dmx, self._dmy, self._dmz, self._L,
                      self._rho_ref, self._seed,
                      self._mp, self._alpha, self._mcuts, len(self._alpha),
                      self._x, self._y, self._z, self._r, self._massleft)
-
+        print "TOTAL MEMORY USED AFTER: ", memory_usage_psutil()
     @property
     def halopos(self):
         return np.vstack((self._x[:self.nhalos_placed],
