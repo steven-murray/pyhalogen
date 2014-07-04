@@ -3,34 +3,51 @@ from setuptools import setup, Extension
 import os
 import sys
 
-version = '0.0.3'
+version = '0.1.0'
 
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
-# if sys.argv[-1] == "publish":
-#     os.system("python setup.py sdist upload")
-#     os.system("python setup.py bdist_egg upload")
-#     sys.exit()
+# # GET THE DEFINE MACROS
+defines = [("ONLYBIG", None),
+           ("VERB", None),
+           ("NDENS", None)]  # These are defaults...
 
-module1 = Extension('halogen.place_halos',
-                    sources=['halogen/place_halos.c'],
+for define in ["DEBUG", "ULTRADEBUG",
+               "NO_EXCLUSION", "NO_MASS_CONSERVATION", "RANKED",
+               "MASS_OF_PARTS"]:
+    if define in sys.argv:
+        defines += [(sys.argv.pop(sys.argv.index(define)), None)]
+
+for define in ["ONLYBIG", "VERB", "NDENS"]:
+    if define in sys.argv:
+        defines.remove((sys.argv.pop(sys.argv.index(define)), None))
+
+place = Extension('pyhalogen.place_halos',
+                    sources=['pyhalogen/source/place_halos.c'],
                     libraries=['m', 'gomp'],
-                    extra_compile_args=["-fopenmp", "-O2"])
+                    extra_compile_args=["-fopenmp", "-O2"],
+                    define_macros=defines)
+
+pop_mf = Extension("pyhalogen.pop_mf",
+                   sources=["pyhalogen/source/populate_mass_function.c"],
+                   libraries=["m", "gomp"],
+                   extra_compile_args=["-fopenmp", "-O2"],
+                   define_macros=defines)
 
 setup(
-    name="halogen",
+    name="pyhalogen",
     version=version,
-    packages=['halogen'],
+    packages=['pyhalogen'],
     install_requires=["hmf"],
-    scripts=["scripts/halogen", "scripts/analyse"],
+    scripts=["scripts/pyhalogen"],  # , "scripts/analyse"],
     author="Steven Murray and Santiago Avila Perez",
     author_email="steven.murray@uwa.edu.au",
-    description="FAst Synthetic galaxy caTalogues",
+    description="Fast Synthetic Statistical Galaxy Catalogues",
     # long_description=read('README.rst'),
     license="MIT",
     keywords="halo mass function 2LPT nbody simulations",
-    # url="https://github.com/steven-murray/hmf",
-    ext_modules=[module1]
+    url="https://github.com/steven-murray/pyhalogen",
+    ext_modules=[place, pop_mf]
     # could also include long_description, download_url, classifiers, etc.
 )
